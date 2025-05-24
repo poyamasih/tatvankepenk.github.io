@@ -1,0 +1,402 @@
+// filepath: c:\flutter procekts\tatvan_kepenk\lib\services\supabase_service.dart
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:tatvan_kepenk/services/supabase_config.dart';
+import 'package:tatvan_kepenk/utils/file_utils.dart';
+import 'package:tatvan_kepenk/utils/image_upload_helper.dart';
+import 'package:uuid/uuid.dart';
+
+// Import the extension
+export 'gallery_service.dart';
+
+class SupabaseService {
+  static final SupabaseService _instance = SupabaseService._internal();
+  late final SupabaseClient _client;
+  bool _initialized = false;
+  final uuid = const Uuid();
+
+  // Singleton pattern
+  factory SupabaseService() {
+    return _instance;
+  }
+
+  SupabaseService._internal();
+
+  // Getter for the Supabase client
+  SupabaseClient get client => _client;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+
+    await Supabase.initialize(
+      url: SupabaseConfig.supabaseUrl,
+      anonKey: SupabaseConfig.supabaseAnonKey,
+    );
+
+    _client = Supabase.instance.client;
+    _initialized = true;
+  }
+
+  // Home Content Methods
+  Future<Map<String, dynamic>?> getHomeContent() async {
+    final response =
+        await _client.from('home_content').select('*').limit(1).maybeSingle();
+    return response;
+  }
+
+  Future<Map<String, dynamic>> createHomeContent(
+    Map<String, dynamic> data,
+  ) async {
+    // Check if there's already a record
+    final existing = await getHomeContent();
+
+    if (existing != null) {
+      // Update existing record
+      await _client.from('home_content').update(data).eq('id', existing['id']);
+      return {...existing, ...data};
+    } else {
+      // Create new record
+      final newData = {...data, 'created_at': DateTime.now().toIso8601String()};
+      final response =
+          await _client.from('home_content').insert(newData).select().single();
+      return response;
+    }
+  }
+
+  Future<void> saveHomeContent({
+    required String title,
+    required String description,
+  }) async {
+    // Check if there's already a record
+    final existing = await getHomeContent();
+
+    if (existing != null) {
+      await _client
+          .from('home_content')
+          .update({
+            'title': title,
+            'description': description,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', existing['id']);
+    } else {
+      await _client.from('home_content').insert({
+        'title': title,
+        'description': description,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  // Kepenk Content Methods
+  Future<Map<String, dynamic>?> getKepenkContent() async {
+    final response =
+        await _client.from('kepenk_content').select('*').limit(1).maybeSingle();
+    return response;
+  }
+
+  Future<void> saveKepenkContent({
+    required String title,
+    required String description,
+  }) async {
+    final existing = await getKepenkContent();
+
+    if (existing != null) {
+      await _client
+          .from('kepenk_content')
+          .update({
+            'title': title,
+            'description': description,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', existing['id']);
+    } else {
+      await _client.from('kepenk_content').insert({
+        'title': title,
+        'description': description,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  // Kapilar Content Methods
+  Future<Map<String, dynamic>?> getKapilarContent() async {
+    final response =
+        await _client
+            .from('kapilar_content')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+    return response;
+  }
+
+  Future<void> saveKapilarContent({
+    required String title,
+    required String description,
+  }) async {
+    final existing = await getKapilarContent();
+
+    if (existing != null) {
+      await _client
+          .from('kapilar_content')
+          .update({
+            'title': title,
+            'description': description,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', existing['id']);
+    } else {
+      await _client.from('kapilar_content').insert({
+        'title': title,
+        'description': description,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  // About Content Methods
+  Future<Map<String, dynamic>?> getAboutSection(int sectionId) async {
+    final response =
+        await _client
+            .from('about_sections')
+            .select('*')
+            .eq('section_number', sectionId)
+            .maybeSingle();
+    return response;
+  }
+
+  Future<List<Map<String, dynamic>>> getAboutSections() async {
+    final response = await _client
+        .from('about_sections')
+        .select('*')
+        .order('section_number', ascending: true);
+
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> saveAboutContent({
+    required int sectionId,
+    required String title,
+    required String description,
+  }) async {
+    final existing = await getAboutSection(sectionId);
+
+    if (existing != null) {
+      await _client
+          .from('about_sections')
+          .update({
+            'title': title,
+            'description': description,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', existing['id']);
+    } else {
+      await _client.from('about_sections').insert({
+        'section_number': sectionId,
+        'title': title,
+        'description': description,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  // Contact Info Methods
+  Future<Map<String, dynamic>?> getContactInfo() async {
+    final response =
+        await _client.from('contact_info').select('*').limit(1).maybeSingle();
+    return response;
+  }
+
+  Future<void> saveContactInfo({
+    required String address,
+    required String phone,
+    required String email,
+    required String workHours,
+  }) async {
+    final existing = await getContactInfo();
+
+    if (existing != null) {
+      await _client
+          .from('contact_info')
+          .update({
+            'address': address,
+            'phone': phone,
+            'email': email,
+            'work_hours': workHours,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', existing['id']);
+    } else {
+      await _client.from('contact_info').insert({
+        'address': address,
+        'phone': phone,
+        'email': email,
+        'work_hours': workHours,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+  
+  // Gallery Methods
+  Future<List<Map<String, dynamic>>> getGalleryItems() async {
+    try {
+      final response = await _client
+          .from('gallery_items')
+          .select('*')
+          .order('created_at', ascending: false);
+
+      // Convert response to list of maps
+      final items = List<Map<String, dynamic>>.from(response ?? []);
+
+      // Handle field consistency for all items
+      for (var item in items) {
+        // Use the non-null value, preferring image_url
+        final imageUrl = item['image_url'];
+        final imagePath = item['image_path'];
+        final correctValue = imageUrl ?? imagePath ?? '';  // Default to empty string if both are null
+        
+        // Always ensure both fields exist and have the same non-null value
+        item['image_url'] = correctValue;
+        item['image_path'] = correctValue;
+        
+        // Ensure other text fields are not null
+        item['title'] = item['title']?.toString() ?? '';
+        item['description'] = item['description']?.toString() ?? '';
+        item['location'] = item['location']?.toString() ?? '';
+      }
+
+      return items;
+    } catch (e) {
+      debugPrint('Error fetching gallery items from Supabase: $e');
+      return [];
+    }
+  }
+  
+  Future<String> uploadImage(dynamic imageFile) async {
+    // Create the helper and delegate to it
+    final imageHelper = ImageUploadHelper(client: _client);
+    return await imageHelper.uploadImage(imageFile);
+  }
+
+  Future<void> saveGalleryItem({
+    required String title,
+    required String description,
+    required String location,
+    required String imageUrl,
+  }) async {
+    try {
+      await _client.from('gallery_items').insert({
+        'title': title,
+        'description': description,
+        'location': location,
+        'image_url': imageUrl,
+        'image_path': imageUrl, // For compatibility
+        'date': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Error saving gallery item: $e');
+      throw Exception('Failed to save gallery item: $e');
+    }
+  }
+
+  Future<void> updateGalleryItem({
+    required String id,
+    required String title,
+    required String description,
+    required String location,
+    String? imageUrl,
+  }) async {
+    try {
+      final Map<String, dynamic> updateData = {
+        'title': title,
+        'description': description,
+        'location': location,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // If imageUrl is provided, update both image fields
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        updateData['image_url'] = imageUrl;
+        updateData['image_path'] = imageUrl;
+      }
+
+      await _client.from('gallery_items').update(updateData).eq('id', id);
+    } catch (e) {
+      debugPrint('Error updating gallery item: $e');
+      throw Exception('Failed to update gallery item: $e');
+    }
+  }
+
+  Future<void> deleteGalleryItem(
+    String id,
+    String imageUrl, {
+    bool deleteRecord = true,
+  }) async {
+    try {
+      // Extract the path from the URL
+      final uri = Uri.parse(imageUrl);
+      final pathSegments = uri.pathSegments;
+      
+      if (pathSegments.length >= 3) {
+        final storagePath = pathSegments.sublist(2).join('/');
+
+        // Delete the image from storage
+        await _client.storage.from('tatvan-images').remove([storagePath]);
+      }
+
+      // Delete the database record if requested
+      if (deleteRecord) {
+        await _client.from('gallery_items').delete().eq('id', id);
+      }
+    } catch (e) {
+      debugPrint('Error deleting gallery item: $e');
+      // If the storage file deletion fails but we still want to delete the record
+      if (deleteRecord) {
+        try {
+          await _client.from('gallery_items').delete().eq('id', id);
+        } catch (recordError) {
+          debugPrint('Error deleting gallery item record: $recordError');
+          throw Exception(
+            'Failed to delete both image and record: $e, $recordError',
+          );
+        }
+      }
+    }
+  }
+
+  // Contact Form Methods
+  Future<void> submitContactForm({
+    required String name,
+    required String email,
+    required String phone,
+    required String message,
+  }) async {
+    await _client.from('contact_forms').insert({
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'message': message,
+      'date': DateTime.now().toIso8601String(),
+      'read': false,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getContactForms() async {
+    final response = await _client
+        .from('contact_forms')
+        .select('*')
+        .order('date', ascending: false);
+
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> markContactFormAsRead(String id) async {
+    await _client.from('contact_forms').update({'read': true}).eq('id', id);
+  }
+
+  Future<void> deleteContactForm(String id) async {
+    await _client.from('contact_forms').delete().eq('id', id);
+  }
+}

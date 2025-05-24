@@ -1,0 +1,734 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
+import 'dart:ui';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:tatvan_kepenk/widgets/supabase_content_section.dart';
+import 'package:tatvan_kepenk/widgets/enhanced_header.dart';
+import 'package:tatvan_kepenk/widgets/page_indicator.dart';
+import 'package:tatvan_kepenk/widgets/scroll_indicator.dart';
+import 'package:tatvan_kepenk/widgets/simplified_intro_section.dart';
+import 'package:tatvan_kepenk/widgets/animated_background.dart';
+import 'package:tatvan_kepenk/pages/about_page.dart';
+import 'package:tatvan_kepenk/pages/contact_page.dart';
+import 'package:get/get.dart';
+import 'package:tatvan_kepenk/services/supabase_service.dart';
+import 'package:tatvan_kepenk/services/supabase_content_service.dart';
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage>
+    with AutomaticKeepAliveClientMixin {
+  late final PageController _pageController;
+  int _currentPageIndex = 0;
+  bool _showScrollHint = true;
+  bool _isScrollingLocked = false;
+  bool _isLoading = true;
+  bool _isNavigating = false;
+  final List<Widget> _pages = [];
+
+  @override
+  bool get wantKeepAlive => true;
+
+  // Helper method for safe page index
+  int _getSafePageIndex(int index) {
+    if (_pages.isEmpty) return 0;
+    return index.clamp(0, _pages.length - 1);
+  }
+
+  // Helper method to get page title
+  String _getPageTitle(int index) {
+    final titles = const [
+      'Ana Sayfa',
+      'Kepenk Sistemleri',
+      'Endüstriyel Kapılar',
+      'Hakkımızda',
+      'İletişim',
+    ];
+
+    final safeIndex = _getSafePageIndex(index);
+    return safeIndex < titles.length ? titles[safeIndex] : '';
+  }
+
+  // Helper to check if we can navigate to next page
+  bool _canNavigateNext() {
+    return _currentPageIndex < (_pages.length - 1) && _pages.isNotEmpty;
+  }
+
+  // Helper to check if we can navigate to previous page
+  bool _canNavigatePrevious() {
+    return _currentPageIndex > 0;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(
+      initialPage: 0,
+      keepPage: true,
+      viewportFraction: 1.0,
+    );
+
+    // تغییر به صورت یک عملیات آسنکرون با تایم‌اوت
+    _initializeAppWithTimeout();
+
+    // اضافه کردن یک تایمر ایمنی برای اطمینان از نمایش رابط کاربری حتی در صورت خطا
+    Future.delayed(const Duration(seconds: 20), () {
+      if (mounted && _isLoading) {
+        debugPrint('Forcing UI display after timeout');
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  Future<void> _initializeAppWithTimeout() async {
+    try {
+      // تنظیم تایم‌اوت برای عملیات‌های آسنکرون
+      await Future.wait([
+        _initializeServices().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('Supabase services initialization timed out');
+            return;
+          },
+        ),
+      ]);
+
+      await _initializeData().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('Data initialization timed out');
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+          return;
+        },
+      );
+    } catch (e) {
+      debugPrint('Error in initialization: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _initializeServices() async {
+    // Make sure Supabase services are initialized
+    try {
+      // Check if services are already registered with Get
+      if (!Get.isRegistered<SupabaseService>()) {
+        final supabaseService = SupabaseService();
+        await supabaseService.initialize();
+        Get.put(supabaseService);
+      }
+
+      if (!Get.isRegistered<SupabaseContentService>()) {
+        final sharedPrefs = await SharedPreferences.getInstance();
+        final supabaseContentService = SupabaseContentService(
+          Get.find<SupabaseService>(),
+          sharedPrefs,
+        );
+        Get.put(supabaseContentService);
+      }
+
+      // Ensure data is synced before showing content
+      await _syncDataIfNeeded();
+    } catch (e) {
+      debugPrint('Error initializing Supabase services: $e');
+    }
+  }
+
+  Future<void> _syncDataIfNeeded() async {
+    try {
+      // Get the content service
+      final supabaseContentService = Get.find<SupabaseContentService>();
+
+      // Try to sync all data from Supabase with timeout
+      await supabaseContentService.syncAllData().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          debugPrint('Supabase data sync timed out - using cached data');
+          return;
+        },
+      );
+    } catch (e) {
+      debugPrint('Error syncing data in HomePage: $e');
+      // Continue with local data - don't block app
+    }
+  }
+
+  Future<void> _initializeData() async {
+    try {
+      // Wait a moment to ensure services are properly initialized
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // تلاش برای همگام‌سازی داده‌ها - با امکان ادامه حتی در صورت خطا
+      try {
+        await _syncDataIfNeeded();
+      } catch (syncError) {
+        debugPrint(
+          'Error in data sync, continuing with local data: $syncError',
+        );
+      }
+
+      // شروع اضافه کردن صفحات به آرایه
+      _pages.addAll([
+        // Ana Sayfa
+        const Padding(
+          padding: EdgeInsets.only(top: 70),
+          child: SimplifiedIntroSection(),
+        ),
+        // Kepenk Sistemleri
+        const Padding(
+          padding: EdgeInsets.only(top: 70),
+          child: SupabaseContentSection(
+            title: 'Kepenk Sistemleri Projelerimiz',
+            description: 'Modern ve Güvenli Çözümler',
+            imagePath: 'assets/images/Automatic_Shutter.png',
+            buttonText: 'Detaylar',
+            contentType: 'kepenk',
+            isActive: true,
+            animationDelay: 200,
+            showGallery: true,
+          ),
+        ),
+        // Endüstriyel Kapılar
+        const Padding(
+          padding: EdgeInsets.only(top: 70),
+          child: SupabaseContentSection(
+            title: 'Endüstriyel Kapı Çözümleri',
+            description:
+                'Fabrika, depo ve endüstriyel tesisler için özel tasarlanmış dayanıklı kapı sistemleri.',
+            imagePath: 'assets/images/Automatic_Shutter.png',
+            buttonText: 'İletişime Geçin',
+            contentType: 'kapilar',
+            isActive: true,
+            animationDelay: 200,
+            showGallery: false,
+          ),
+        ),
+        // Hakkımızda
+        const Padding(
+          padding: EdgeInsets.only(top: 70),
+          child: AboutPageContent(),
+        ),
+        // İletişim
+        const Padding(
+          padding: EdgeInsets.only(top: 70),
+          child: ContactPageContent(),
+        ),
+      ]);
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error initializing data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _navigateToPage(int index) async {
+    if (_currentPageIndex == index || _isNavigating || _isLoading) {
+      return;
+    }
+
+    _isNavigating = true;
+    _isScrollingLocked = true;
+
+    // Ensure index is valid
+    final safeIndex = _getSafePageIndex(index);
+
+    try {
+      // For distant pages, use jumpTo instead of animation
+      if ((safeIndex - _currentPageIndex).abs() > 1) {
+        _pageController.jumpToPage(safeIndex);
+        await Future.delayed(const Duration(milliseconds: 50));
+      } else {
+        await _pageController
+            .animateToPage(
+              safeIndex,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.fastLinearToSlowEaseIn,
+            )
+            .whenComplete(() => HapticFeedback.selectionClick());
+      }
+
+      if (mounted) {
+        setState(() {
+          _currentPageIndex = safeIndex;
+          if (_showScrollHint) _showScrollHint = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _currentPageIndex =
+              _pageController.page?.round() ?? _currentPageIndex;
+        });
+      }
+    } finally {
+      if (mounted) {
+        _isNavigating = false;
+        _isScrollingLocked = false;
+      }
+    }
+  }
+
+  void _lockScrollingTemporarily() {
+    setState(() {
+      _isScrollingLocked = true;
+    });
+
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          _isScrollingLocked = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A1A),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Logo image
+              Image.asset(
+                'assets/images/logo.png',
+                width: 120,
+                height: 120,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 30),
+              // Loading indicator
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+              const SizedBox(height: 20),
+              // Loading message
+              const Text(
+                'Sayfa Yükleniyor...',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RepaintBoundary(
+      child: Listener(
+        onPointerSignal: (pointerSignal) {
+          if (_isLoading) return;
+          if (pointerSignal is PointerScrollEvent) {
+            if (_isScrollingLocked) return;
+
+            if (pointerSignal.scrollDelta.dy > 0 && _canNavigateNext()) {
+              _navigateToPage(_currentPageIndex + 1);
+              _lockScrollingTemporarily();
+            } else if (pointerSignal.scrollDelta.dy < 0 &&
+                _canNavigatePrevious()) {
+              _navigateToPage(_currentPageIndex - 1);
+              _lockScrollingTemporarily();
+            }
+          }
+        },
+        child: KeyboardListener(
+          focusNode: FocusNode()..requestFocus(),
+          onKeyEvent: (event) {
+            if (_isLoading) return;
+            if (event is KeyDownEvent) {
+              if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+                  _canNavigateNext()) {
+                _navigateToPage(_currentPageIndex + 1);
+              } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+                  _canNavigatePrevious()) {
+                _navigateToPage(_currentPageIndex - 1);
+              }
+            }
+          },
+          child: _buildMainContent(screenHeight),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainContent(double screenHeight) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: RepaintBoundary(
+          child: EnhancedHeader(
+            currentPageIndex: _getSafePageIndex(_currentPageIndex),
+            onPageChanged: (index) {
+              if (index != _currentPageIndex) {
+                _navigateToPage(index);
+              }
+            },
+          ),
+        ),
+      ),
+      endDrawer: EnhancedDrawer(
+        currentPageIndex: _getSafePageIndex(_currentPageIndex),
+        onPageChanged: (index) {
+          if (index != _currentPageIndex) {
+            _navigateToPage(index);
+          }
+        },
+      ),
+      body: AnimatedBackground(
+        child: Stack(
+          children: [
+            NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                // Prevent handling scroll during animation
+                if (_isNavigating) return true;
+                return false;
+              },
+              child: PageView.custom(
+                controller: _pageController,
+                scrollDirection: Axis.horizontal,
+                onPageChanged: (index) {
+                  if (mounted && !_isNavigating) {
+                    setState(() {
+                      _currentPageIndex = index;
+                      if (_showScrollHint) _showScrollHint = false;
+                    });
+                  }
+                },
+                physics:
+                    _isNavigating
+                        ? const NeverScrollableScrollPhysics()
+                        : const PageScrollPhysics(),
+                childrenDelegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index >= _pages.length) return null;
+                    return RepaintBoundary(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: KeyedSubtree(
+                          key: ValueKey<int>(index),
+                          child: _pages[index],
+                        ),
+                      ),
+                    );
+                  },
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<int>) {
+                      return key.value;
+                    }
+                    return null;
+                  },
+                  childCount: _pages.length,
+                ),
+              ),
+            ),
+            _buildPageIndicator(),
+            _buildScrollHint(),
+            _buildNextButton(),
+            _buildPrevButton(),
+            _buildScrollInstruction(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageIndicator() {
+    if (_pages.isEmpty) return const SizedBox.shrink();
+
+    return Positioned(
+      bottom: 40,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Column(
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.0, 0.2),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: Text(
+                _getPageTitle(_currentPageIndex),
+                key: ValueKey<int>(_getSafePageIndex(_currentPageIndex)),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              opacity: _isScrollingLocked ? 1.0 : 0.8,
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 300),
+                scale: _isScrollingLocked ? 1.1 : 1.0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.black26,
+                  ),
+                  child: PageIndicator(
+                    currentPage: _getSafePageIndex(_currentPageIndex),
+                    pageCount: _pages.length,
+                    activeColor: Colors.white,
+                    inactiveColor: Colors.white38,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScrollHint() {
+    return Positioned(
+      right: 20,
+      bottom: 80,
+      child: ScrollIndicator(
+        isVisible:
+            _showScrollHint && _currentPageIndex == 0 && _pages.isNotEmpty,
+        size: 40,
+        opacity: 0.6,
+      ),
+    );
+  }
+
+  Widget _buildNextButton() {
+    if (!_canNavigateNext()) return const SizedBox.shrink();
+
+    return Positioned(
+      right: 20,
+      bottom: MediaQuery.of(context).size.height / 2,
+      child: _animatedNavButton(
+        icon: Icons.arrow_forward_ios,
+        onPressed: () => _navigateToPage(_currentPageIndex + 1),
+        heroTag: 'nextBtn',
+      ),
+    );
+  }
+
+  Widget _buildPrevButton() {
+    if (!_canNavigatePrevious()) return const SizedBox.shrink();
+
+    return Positioned(
+      left: 20,
+      bottom: MediaQuery.of(context).size.height / 2,
+      child: _animatedNavButton(
+        icon: Icons.arrow_back_ios,
+        onPressed: () => _navigateToPage(_currentPageIndex - 1),
+        heroTag: 'prevBtn',
+      ),
+    );
+  }
+
+  Widget _animatedNavButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String heroTag,
+  }) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.8 + (0.2 * value),
+          child: Opacity(opacity: value, child: child),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withOpacity(0.1),
+              blurRadius: 20,
+              spreadRadius: -5,
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          heroTag: heroTag,
+          backgroundColor: Colors.white.withOpacity(0.15),
+          elevation: 0,
+          highlightElevation: 0,
+          onPressed: onPressed,
+          child: Icon(icon, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScrollInstruction() {
+    if (_currentPageIndex != 0 || _pages.isEmpty)
+      return const SizedBox.shrink();
+
+    return Positioned(
+      bottom: 15,
+      right: 0,
+      left: 0,
+      child: Center(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 1000),
+          curve: Curves.easeInOut,
+          builder: (context, value, child) {
+            return Opacity(opacity: value * 0.8, child: child);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              color: Colors.black12,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.15),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.swipe, color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'Keşfetmek İçin Kaydırın',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.mouse,
+                  color: Colors.white.withOpacity(0.7),
+                  size: 14,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// This is a placeholder for the drawer widget
+class EnhancedDrawer extends StatelessWidget {
+  final int currentPageIndex;
+  final Function(int) onPageChanged;
+
+  const EnhancedDrawer({
+    super.key,
+    required this.currentPageIndex,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Colors.blue),
+            child: Text(
+              'Menu',
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
+          ),
+          ListTile(
+            title: const Text('Ana Sayfa'),
+            selected: currentPageIndex == 0,
+            onTap: () {
+              onPageChanged(0);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: const Text('Kepenk Sistemleri'),
+            selected: currentPageIndex == 1,
+            onTap: () {
+              onPageChanged(1);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: const Text('Endüstriyel Kapılar'),
+            selected: currentPageIndex == 2,
+            onTap: () {
+              onPageChanged(2);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: const Text('Hakkımızda'),
+            selected: currentPageIndex == 3,
+            onTap: () {
+              onPageChanged(3);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            title: const Text('İletişim'),
+            selected: currentPageIndex == 4,
+            onTap: () {
+              onPageChanged(4);
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}

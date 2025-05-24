@@ -1,0 +1,93 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class ContentStorage {
+  final SharedPreferences _prefs;
+
+  // Storage keys
+  static const String _homeTitleKey = 'home_title';
+  static const String _homeDescKey = 'home_description';
+  static const String _kepenkTitleKey = 'kepenk_title';
+  static const String _kepenkDescKey = 'kepenk_description';
+  static const String _galleryItemsKey = 'gallery_items';
+  static const String _kapilarTitleKey = 'kapilar_title';
+  static const String _kapilarDescKey = 'kapilar_description';
+  static const String _aboutPrefix = 'about';
+  static const String _contactInfoKey = 'contact_info';
+  static const String _contactFormsKey = 'contact_forms';
+
+  ContentStorage(this._prefs);
+
+  // Ana Sayfa methods
+  String getHomeTitle() => _prefs.getString(_homeTitleKey) ?? '';
+  Future<void> saveHomeTitle(String title) async =>
+      await _prefs.setString(_homeTitleKey, title);
+
+  String getHomeDescription() => _prefs.getString(_homeDescKey) ?? '';
+  Future<void> saveHomeDescription(String desc) async =>
+      await _prefs.setString(_homeDescKey, desc);
+
+  // Kepenk Sistemleri methods
+  String getKepenkTitle() => _prefs.getString(_kepenkTitleKey) ?? '';
+  Future<void> saveKepenkTitle(String title) async =>
+      await _prefs.setString(_kepenkTitleKey, title);
+
+  String getKepenkDescription() => _prefs.getString(_kepenkDescKey) ?? '';
+  Future<void> saveKepenkDescription(String desc) async =>
+      await _prefs.setString(_kepenkDescKey, desc);
+
+  List<Map<String, dynamic>> getGalleryItems() {
+    final String? storedItems = _prefs.getString(_galleryItemsKey);
+    if (storedItems == null) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(storedItems));
+  }
+
+  Future<void> saveGalleryItems(List<Map<String, dynamic>> items) async {
+    await _prefs.setString(_galleryItemsKey, jsonEncode(items));
+  }
+
+  // Kapilar methods
+  String getKapilarTitle() => _prefs.getString(_kapilarTitleKey) ?? '';
+  Future<void> saveKapilarTitle(String title) async =>
+      await _prefs.setString(_kapilarTitleKey, title);
+
+  String getKapilarDescription() => _prefs.getString(_kapilarDescKey) ?? '';
+  Future<void> saveKapilarDescription(String desc) async =>
+      await _prefs.setString(_kapilarDescKey, desc);
+
+  // About methods
+  String getAboutTitle(int index) =>
+      _prefs.getString('${_aboutPrefix}_${index}_title') ?? '';
+  String getAboutDescription(int index) =>
+      _prefs.getString('${_aboutPrefix}_${index}_desc') ?? '';
+  Future<void> saveAboutContent(
+    String section,
+    String title,
+    String desc,
+  ) async {
+    await _prefs.setString('${_aboutPrefix}_${section}_title', title);
+    await _prefs.setString('${_aboutPrefix}_${section}_desc', desc);
+  }
+
+  // Contact methods
+  String getContactInfo(String key) {
+    final String? storedInfo = _prefs.getString(_contactInfoKey);
+    if (storedInfo == null) return '';
+    final Map<String, dynamic> info = jsonDecode(storedInfo);
+    return info[key]?.toString() ?? '';
+  }
+
+  Future<void> saveContactInfo(Map<String, String> info) async {
+    await _prefs.setString(_contactInfoKey, jsonEncode(info));
+  }
+
+  List<Map<String, dynamic>> getContactForms() {
+    final String? storedForms = _prefs.getString(_contactFormsKey);
+    if (storedForms == null) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(storedForms));
+  }
+
+  Future<void> saveContactForms(List<Map<String, dynamic>> forms) async {
+    await _prefs.setString(_contactFormsKey, jsonEncode(forms));
+  }
+}

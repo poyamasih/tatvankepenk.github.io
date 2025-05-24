@@ -1,0 +1,77 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart' show debugPrint;
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:tatvan_kepenk/utils/file_utils.dart';
+import 'package:uuid/uuid.dart';
+
+/// Helper class for uploading images to Supabase storage
+/// This class provides a platform-agnostic way to upload images from both web and mobile
+class ImageUploadHelper {
+  final SupabaseClient client;
+  final String bucketName;
+  final Uuid _uuid = const Uuid();
+  final ImagePicker _picker = ImagePicker();
+
+  ImageUploadHelper({required this.client, this.bucketName = 'tatvan-images'});
+
+  /// Uploads an image file to Supabase storage
+  /// Accepts either an XFile from image_picker or a dart:io File
+  Future<String> uploadImage(dynamic imageFile) async {
+    debugPrint('Uploading image of type: ${imageFile.runtimeType}');
+
+    try {
+      // Import platform-specific file utilities
+      final bytes = await readFileAsBytes(imageFile);
+
+      // Generate unique file name with extension
+      final fileExt = getFileExtension(imageFile);
+      final fileName = '${_uuid.v4()}.$fileExt';
+      final filePath = 'gallery/$fileName';
+
+      debugPrint(
+        'Uploading image with extension: $fileExt and filename: $fileName',
+      );
+
+      await client.storage
+          .from(bucketName)
+          .uploadBinary(
+            filePath,
+            bytes,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+          );
+
+      final imageUrl = client.storage.from(bucketName).getPublicUrl(filePath);
+
+      debugPrint('Image uploaded successfully. URL: $imageUrl');
+      return imageUrl;
+    } catch (e) {
+      debugPrint('Error uploading image to Supabase: $e');
+      debugPrint('Error stack trace: ${StackTrace.current}');
+      throw Exception('Failed to upload image: $e');
+    }
+  }
+
+  /// Picks an image and then uploads it
+  Future<String?> pickAndUploadImage() async {
+    try {
+      // Pick image
+      final XFile? pickedImage = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 80,
+      );
+      
+      if (pickedImage == null) {
+        return null;
+      }
+      
+      // Upload to Supabase
+      return await uploadImage(pickedImage);
+    } catch (e) {
+      debugPrint('Error picking or uploading image: $e');
+      return null;
+    }
+  }
+}

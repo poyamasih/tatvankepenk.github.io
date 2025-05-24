@@ -1,0 +1,96 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io';
+
+class ImageHelper {
+  static Widget buildImage(
+    String path, {
+    double? width,
+    double? height,
+    BoxFit? fit,
+    BorderRadius? borderRadius,
+    Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
+  }) {
+    // Create standard error widget
+    Widget errorWidget = Container(
+      width: width,
+      height: height,
+      color: Colors.grey[300],
+      child: const Icon(Icons.broken_image, color: Colors.grey),
+    );
+
+    // Create standard error builder
+    Widget Function(BuildContext, Object, StackTrace?) defaultErrorBuilder =
+        (context, error, stackTrace) => errorWidget;
+
+    Widget Function(BuildContext, Object, StackTrace?) finalErrorBuilder =
+        errorBuilder ?? defaultErrorBuilder;
+
+    try {
+      // Check if path is a URL (for Supabase storage images)
+      if (path.startsWith('http')) {
+        return ClipRRect(
+          borderRadius: borderRadius ?? BorderRadius.zero,
+          child: Image.network(
+            path,
+            width: width,
+            height: height,
+            fit: fit ?? BoxFit.cover,
+            errorBuilder: finalErrorBuilder,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: width,
+                height: height,
+                color: Colors.grey[200],
+                child: Center(
+                  child: CircularProgressIndicator(
+                    value:
+                        loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      } else if (kIsWeb) {
+        // On web, always use Image.network since File is not supported
+        return ClipRRect(
+          borderRadius: borderRadius ?? BorderRadius.zero,
+          child: Image.network(
+            path,
+            width: width,
+            height: height,
+            fit: fit ?? BoxFit.cover,
+            errorBuilder: finalErrorBuilder,
+          ),
+        );
+      } else {
+        try {
+          // On mobile, use File
+          return ClipRRect(
+            borderRadius: borderRadius ?? BorderRadius.zero,
+            child: Image.file(
+              File(
+                path,
+              ), // File constructor is safe here because we checked for kIsWeb above
+              width: width,
+              height: height,
+              fit: fit ?? BoxFit.cover,
+              errorBuilder: finalErrorBuilder,
+            ),
+          );
+        } catch (e) {
+          debugPrint('Error loading file image: $e');
+          return errorWidget;
+        }
+      }
+    } catch (e) {
+      // Return a fallback
+      return errorWidget;
+    }
+  }
+}
