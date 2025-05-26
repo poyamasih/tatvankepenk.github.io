@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /build/
+Disallow: /assets/flutter_service_worker.js
+Disallow: /*.env$
+Disallow: /*.config.js$
+Disallow: /*.json$
+Disallow: /*.md$
+Disallow: /*.sql$
+Disallow: /*.log$
+
+# Allow essential files
+Allow: /sitemap.xml
+Allow: /manifest.json
+Allow: /assets/images/
+Allow: /assets/fonts/
+Allow: /icons/
+
+# Sitemap location
+Sitemap: https://tatvankepenk.com.tr/sitemap.xml
