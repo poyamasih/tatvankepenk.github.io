@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tatvan_kepenk/services/supabase_service.dart';
+import 'package:tatvan_kepenk/models/drawer_settings.dart';
 
 class SupabaseContentService {
   final SupabaseService _supabaseService;
@@ -396,5 +397,18 @@ class SupabaseContentService {
   Future<void> deleteContactForm(String id) async {
     await _supabaseService.deleteContactForm(id);
     await _syncContactForms(); // Refresh local data after deletion
+  }
+
+  // Method to get drawer settings
+  DrawerSettings? getDrawerSettings() {
+    try {
+      final String? cachedSettings = _prefs.getString('drawer_settings');
+      if (cachedSettings != null) {
+        return DrawerSettings.fromJson(jsonDecode(cachedSettings));
+      }
+    } catch (e) {
+      debugPrint('Error retrieving drawer settings: $e');
+    }
+    return null;
   }
 }
